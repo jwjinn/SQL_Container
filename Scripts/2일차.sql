@@ -283,7 +283,7 @@ GROUP BY(DEPTNO);
 
 --Q19) 사원 테이블에서 부서별, 직업별 급여의 합 조회시 Rollup집계를 내보자.
 
-SELECT DEPTNO, JOB, COUNT(*), SUM(SAL)  
+SELECT DEPTNO, JOB, COUNT(*), SUM(SAL)
 FROM EMP e
 GROUP BY ROLLUP (DEPTNO, JOB);
 
@@ -317,3 +317,143 @@ GROUP BY CUBE  (DEPTNO, JOB); -- 2* 2 = 4 개의 그룹화를 계산한다.
 --CUBE를 하게되면 여하튼 오른값을 기준으로 한 것도 출력된다.
 --Rollup에서 좀더 구체적인
 
+--Q21) Grouping sets : Group by 뒤에 선언되는 함수_여러개를 그룹화 할 수 있다.
+--(Deptno, job, mgr), (deptno, mgr), (job, mgr))
+
+--case1: 그룹 합집합 union all
+SELECT DEPTNO, JOB ,MGR , AVG(SAL) 
+FROM EMP e 
+GROUP BY DEPTNO , JOB ,MGR 
+	UNION all
+SELECT DEPTNO, NULL , MGR , AVG(SAL) 
+FROM EMP e 
+GROUP BY DEPTNO,MGR 
+	UNION all
+SELECT NULL ,JOB ,MGR , AVG(SAL) 
+FROM EMP e 
+GROUP BY JOB ,MGR ;
+
+
+--case2: 그룹 grouping sets
+
+SELECT DEPTNO, JOB ,MGR , AVG(SAL) 
+FROM EMP e 
+GROUP BY GROUPING SETS ((DEPTNO , JOB ,MGR), (DEPTNO, MGR), (JOB, MGR)); 
+
+
+--Q22) 조합 열
+
+SELECT DEPTNO, JOB , MGR ,sum(SAL) 
+FROM EMP e 
+GROUP BY ROLLUP (DEPTNO, (JOB, MGR));
+
+
+--Q24) 분석함수: max, min, count, LGA, LEAD, RANK, RATIO_TO_REPORT, ROW_NUMBER, SUM, AVG등(집계함수)
+/*
+ * [형식] 톄이블에서 몇줄에서 몇줄까지 그룹핑해서 정렬한 다음 분석함수의 결과를 리턴하는 함수
+ * 		테이블 -> 선택 행 -> 그룹핑 -> 정렬 -> 집계 리턴
+ * select
+ * 			분석함수 (ARGS) OVER(
+ * 										[partition by] 쿼리 결과를 그룹으로 묶는다.
+ * 										[order by] 각 그룹의 정렬 _ 행의 검색 순서 ASC/DESC/NULL/FIRST/LAST
+ * 												ex) DESC NULL FIRST | ASC NULL LAST
+ *
+ * 										[windowing 절] ROWS| RANGE [BETWEEN AND]
+ *								)
+ * From 테이블명
+ *
+ */	
+
+-- group by를 진행하게 되면, group by 대상 + aggregate function을 제외하고는 사용을 할 수 없다. select에
+
+-- 사원번호, 사원의 이름, 부서번호, 봉급, 부서내에서 급여가 많은 사원부터 순위를 출력하자.
+
+SELECT  EMPNO, ENAME, DEPTNO, SAL,
+RANK() over(PARTITION BY DEPTNO
+ORDER BY SAL DESC) "순 위"
+FROM EMP e;
+
+
+SELECT EMPNO, ENAME, DEPTNO, SAL,
+DENSE_Rank() over(PARTITION BY DEPTNO
+	ORDER BY SAL DESC) "순 위"
+FROM EMP e;
+
+--Q25) CUME_DIST(): 누적된 분산 정도를 출력. - 그룹핑 -> 정렬 -> 그룹별 상대적인 위치(누적된 분산정도)
+
+SELECT ENAME, SAL,
+		CUME_DIST () over(
+		ORDER BY SAL) "누적 분산"
+FROM EMP e
+WHERE  DEPTNO = 20;
+
+--Q26) NTITLE(n): 버킷 분할
+
+SELECT ENAME, SAL,
+		NTILE(4)over(
+		ORDER BY SAL) RES_NTITLE
+FROM EMP e;
+
+
+SELECT ENAME, SAL, NTILE(4) over(
+ORDER BY SAL) res_ntitle 
+FROM EMP e;
+
+--Q27) 사원이름, 부서번호, 봉급, 전체 봉급의 합계, 부서별 봉급 합계를 출력해보자.
+
+SELECT ENAME, DEPTNO, SAL, 
+sum(SAL) over() "TOTAL_SUM",
+sum(SAL) over(PARTITION BY DEPTNO) "DEPT_SUM"
+FROM EMP e;
+
+--Q28) 사원이름, 직업, 봉급, 직업별 평균, 직업 중에 최대 급여를 출력
+
+SELECT ENAME, JOB, SAL,
+AVG(SAL) over(PARTITION BY JOB),
+MAX(SAL) over(PARTITION BY JOB) 
+FROM EMP e
+
+--Q29) 사원의 이름, 부서번호, 봉급의 합계를 더한 결과를 , 누적합계를 출력 해보자.
+
+SELECT ENAME, DEPTNO, SAL,
+SUM(SAL) over(ORDER BY SAL ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) "sum1",
+sum(SAL) OVER (ORDER BY SAL ROWS UNBOUNDED PRECEDING ) "Sum2" 
+FROM EMP e;
+
+--Following은 result 테이블 기준으로 아래를 의미한다. 1 Following의 의미는 아래로 한칸
+-- unbounded preceding 내 행기준으로 위로 간다. -> 즉 합계를 만든다.
+
+--https://learnsql.com/blog/sql-window-functions-rows-clause/1.png 이미지 주소
+
+
+--Q30) RATIO_TO_REPORT를 이용해서 해당 구간을 차지하는 비율을 리턴해보자.
+--사원의 월급을 50000으로 증가했을때 기존 비율을 적용했을 경우 각 사원은 얼마를 받을 수 있을지 추출하자.
+
+SELECT ENAME, SAL, RATIO_TO_REPORT(SAL) over()AS "비율" 
+FROM EMP e;
+
+SELECT ENAME, SAL, RATIO_TO_REPORT(SAL) over() AS "비율",
+TRUNC(RATIO_TO_REPORT(SAL) over()* 50000) "받게 될 봉급" 
+FROM EMP e;
+
+--Q31) LAG: 그룹핑 내에서 상대적 로우를 참조한다. - 상위를 가져온다. 
+-- 상대적으로 상위에 위치한 로우 (오름차순의 경우 로우의 정렬 컬럼의 값보다 작은 값을 갖는 로우,
+-- 내림차순의 경우 기준 로우의 정렬 컬럼 값보다 큰 값을 갖는 로우를 참조하기 위해 사용된다.)
+
+SELECT ENAME, DEPTNO, SAL, LAG(SAL, 1, 0 ) over(ORDER  BY SAL) AS "NEXT_SAL",-- 자기자 - 
+LAG(SAL, 1, SAL) over(ORDER BY SAL) AS "NEXT_SAL02",
+LAG(SAL, 1, SAL) over(PARTITION BY DEPTNO ORDER BY SAL) AS "NEXT_SAL03"
+FROM EMP e;
+
+--LAG는 이전 값을 가져온다. LAG(SAL, 1, 0): sal 기준에서 하나 전,  없으면 0을 리턴.
+
+
+--Q32) LEAD: 그룹핑 내에서 상대적 로우를 참조한다. - 하위를 가져온다. 
+-- 상대적으로 상위에 위치한 로우 (오름차순의 경우 로우의 정렬 컬럼의 값보다 큰 값을 갖는 로우,
+-- 내림차순의 경우 기준 로우의 정렬 컬럼 값보다 작은 값을 갖는 로우를 참조하기 위해 사용된다.)
+
+
+SELECT ENAME, DEPTNO, SAL, LEAD(SAL, 1, 0 ) over(ORDER  BY SAL) AS "NEXT_SAL",-- 자기자 - 
+LEAD(SAL, 1, SAL) over(ORDER BY SAL) AS "NEXT_SAL02",
+LEAD(SAL, 1, SAL) over(PARTITION BY DEPTNO ORDER BY SAL) AS "NEXT_SAL03"
+FROM EMP e;
